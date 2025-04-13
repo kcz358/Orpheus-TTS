@@ -68,7 +68,6 @@ async def main(args):
     pbar.close()
     
     assert len(generated_list) == len(data)
-    generated_list = generated_list[:5]
 
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
