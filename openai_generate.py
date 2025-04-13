@@ -49,6 +49,7 @@ def get_wav_duration(file_path):
 async def main(args):
     data_path = args.data_path
     save_dir = args.save_dir
+    os.makedirs(save_dir, exist_ok=True)
     start_time = time.time()
 
     generated_list = []
@@ -75,7 +76,8 @@ async def main(args):
 
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [make_tts_request(session, text, i, semaphore) for (text, i) in generated_list]
-        await asyncio.gather(*tasks)
+        for task in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Processing requests"):
+            await task
 
     total_duration = time.time() - start_time
     print(f"\nAll requests completed in {total_duration:.2f} seconds")
