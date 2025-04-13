@@ -119,9 +119,13 @@ async def generate_audio_stream(prompt: str, voice: str, file_path: str) -> None
         logger.error(f"Error in async generation: {str(e)}")
         raise
 
-def generate_requests(data_path: str, save_dir: str):
+def generate_requests(data_path: str, save_dir: str, start_index: int = 0, end_index: int = None):
     with jsonlines.open(data_path, 'r') as reader:
         for idx, da in enumerate(reader):
+            if end_index is not None and idx >= end_index:
+                break
+            if idx < start_index:
+                continue
             messages = da['messages']
             id = da["id"]
             for message in messages:
@@ -135,6 +139,8 @@ def generate_requests(data_path: str, save_dir: str):
 async def main(args):
     data_path = args.data_path
     save_dir = args.save_dir
+    start_index = args.start_index
+    end_index = args.end_index
     os.makedirs(save_dir, exist_ok=True)
     start_time = time.time()
 
@@ -145,7 +151,7 @@ async def main(args):
             return await generate_audio_stream(text, "tara", save_path)
 
     tasks = []
-    for (text, save_path) in generate_requests(data_path, save_dir):
+    for (text, save_path) in generate_requests(data_path, save_dir, start_index, end_index):
         tasks.append(asyncio.create_task(_process(text, save_path)))
     
     pbar = tqdm(total=len(tasks), desc="Processing requests")
@@ -167,6 +173,8 @@ if __name__ == "__main__":
     parser.add_argument("--data_path", type=str, required=True, help="Path to the input JSONL file.")
     parser.add_argument("--save_dir", type=str, default=save_dir, help="Directory to save the generated audio files.")
     parser.add_argument("--concurrency", type=int, default=48, help="Number of concurrent requests.")
+    parser.add_argument("--start_index", type=int, default=0, help="Start index for processing.")
+    parser.add_argument("--end_index", type=int, default=None, help="End index for processing.")
     
     args = parser.parse_args()
     
