@@ -77,7 +77,8 @@ async def generate_audio_stream(prompt: str, voice: str, file_path: str) -> None
             max_tokens=MAX_TOKENS,
             temperature=TEMPERATURE,
             top_p=TOP_P,
-            stop=["<|endoftext|>"]
+            stop=["<|endoftext|>"],
+            timeout=600,
         )
 
         async def token_generator():
