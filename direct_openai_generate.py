@@ -111,24 +111,24 @@ async def generate_audio_stream(prompt: str, voice: str, file_path: str) -> None
                     
                     wf.writeframes(audio_chunk)
 
-        logger.info(f"Processed {chunk_count} chunks ({total_bytes} bytes)")
-        duration = total_frames / SAMPLE_RATE
-        generation_time = time.time() - start_time
-        logger.info(f"Real-time factor: {duration/generation_time:.2f}x")
+        # logger.info(f"Processed {chunk_count} chunks ({total_bytes} bytes)")
+        # duration = total_frames / SAMPLE_RATE
+        # generation_time = time.time() - start_time
+        # logger.info(f"Real-time factor: {duration/generation_time:.2f}x")
     except Exception as e:
         logger.error(f"Error in async generation: {str(e)}")
         raise
 
 def generate_requests(data_path: str, save_dir: str):
     with jsonlines.open(data_path, 'r') as reader:
-        for da in reader:
+        for idx, da in enumerate(reader):
             messages = da['messages']
             id = da["id"]
             for message in messages:
                 content = message["content"]
                 for cont in content:
                     if cont["type"] == "text":
-                        save_path = os.path.join(save_dir, f"{id}_assistant.wav")
+                        save_path = os.path.join(save_dir, f"data_idx_{idx}_{id}_assistant.wav")
                         yield cont["text"], save_path
 
 
@@ -138,7 +138,7 @@ async def main(args):
     os.makedirs(save_dir, exist_ok=True)
     start_time = time.time()
 
-    semaphore = asyncio.Semaphore(32)
+    semaphore = asyncio.Semaphore(args.concurrency)
 
     async def _process(text, save_path):
         async with semaphore:
@@ -166,6 +166,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate audio files from text using OpenAI API.")
     parser.add_argument("--data_path", type=str, required=True, help="Path to the input JSONL file.")
     parser.add_argument("--save_dir", type=str, default=save_dir, help="Directory to save the generated audio files.")
+    parser.add_argument("--concurrency", type=int, default=48, help="Number of concurrent requests.")
     
     args = parser.parse_args()
     
