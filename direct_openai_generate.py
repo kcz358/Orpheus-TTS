@@ -13,6 +13,7 @@ import torch
 from tqdm import tqdm
 import jsonlines
 import asyncio
+from glob import glob
 
 from orpheus_tts.decoder import tokens_decoder
 
@@ -50,6 +51,13 @@ client = AsyncOpenAI(
     base_url=VLLM_REMOTE,
     api_key=VLLM_KEY  # dummy key
 )
+
+def scan_cache(data_dir):
+    print(f"Scanning cache directory: {data_dir}")
+    cache_files = glob(os.path.join(data_dir, "*.wav"))
+    cache_files = set([os.path.basename(f) for f in cache_files])
+    print(f"Found {len(cache_files)} cache files.")
+    return cache_files
 
 
 def format_prompt(prompt: str, voice: str) -> str:
@@ -120,7 +128,7 @@ async def generate_audio_stream(prompt: str, voice: str, file_path: str) -> None
         logger.error(f"Error in async generation: {str(e)}")
         raise
 
-def generate_requests(data_path: str, save_dir: str, start_index: int = 0, end_index: int = None):
+def generate_requests(data_path: str, save_dir: str, start_index: int = 0, cache_files: set = None, end_index: int = None):
     with jsonlines.open(data_path, 'r') as reader:
         for idx, da in enumerate(reader):
             if end_index is not None and idx >= end_index:
@@ -134,6 +142,9 @@ def generate_requests(data_path: str, save_dir: str, start_index: int = 0, end_i
                 for cont in content:
                     if cont["type"] == "text":
                         save_path = os.path.join(save_dir, f"data_idx_{idx}_{id}_assistant.wav")
+                        # Don't yield if the file already exists and is in the cache
+                        if cache_files is not None and os.path.basename(save_path) in cache_files:
+                            continue
                         yield cont["text"], save_path
 
 
@@ -144,6 +155,7 @@ async def main(args):
     end_index = args.end_index
     os.makedirs(save_dir, exist_ok=True)
     start_time = time.time()
+    cache_files = scan_cache(save_dir)
 
     semaphore = asyncio.Semaphore(args.concurrency)
 
@@ -152,7 +164,7 @@ async def main(args):
             return await generate_audio_stream(text, "tara", save_path)
 
     tasks = []
-    for (text, save_path) in generate_requests(data_path, save_dir, start_index, end_index):
+    for (text, save_path) in generate_requests(data_path, save_dir, start_index, cache_files, end_index):
         tasks.append(asyncio.create_task(_process(text, save_path)))
     
     pbar = tqdm(total=len(tasks), desc="Processing requests")
