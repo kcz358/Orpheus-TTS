@@ -12,10 +12,9 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import jsonlines
+import json
 import asyncio
 from glob import glob
-
-from orpheus_tts.decoder import tokens_decoder
 
 
 DEBUG = False
@@ -102,23 +101,28 @@ async def generate_audio_stream(prompt: str, voice: str, file_path: str) -> None
                                 logger.debug(f"Complete token: {complete_token}")
                             yield complete_token
                             buffer = buffer[token_end:]
+        
+        complete_string = ""
+        async for token in token_generator():
+            complete_string += token
 
-        with wave.open(file_path, 'wb') as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(SAMPLE_RATE)
+        return complete_string, file_path
+        # with wave.open(file_path, 'wb') as wf:
+            # wf.setnchannels(1)
+            # wf.setsampwidth(2)
+            # wf.setframerate(SAMPLE_RATE)
 
-            async for audio_chunk in tokens_decoder(token_generator()):
-                if audio_chunk:
-                    chunk_count += 1
-                    total_bytes += len(audio_chunk)
-                    frame_count = len(audio_chunk) // 2  # 16-bit samples
-                    total_frames += frame_count
+            # async for audio_chunk in tokens_decoder(token_generator()):
+                # if audio_chunk:
+                    # chunk_count += 1
+                    # total_bytes += len(audio_chunk)
+                    # frame_count = len(audio_chunk) // 2  # 16-bit samples
+                    # total_frames += frame_count
                     
-                    if DEBUG:
-                        all_audio_data.extend(audio_chunk)
+                    # if DEBUG:
+                        # all_audio_data.extend(audio_chunk)
                     
-                    wf.writeframes(audio_chunk)
+                    # wf.writeframes(audio_chunk)
 
         # logger.info(f"Processed {chunk_count} chunks ({total_bytes} bytes)")
         # duration = total_frames / SAMPLE_RATE
@@ -168,10 +172,16 @@ async def main(args):
         tasks.append(asyncio.create_task(_process(text, save_path)))
     
     pbar = tqdm(total=len(tasks), desc="Processing requests")
+    results = {}
     for task in asyncio.as_completed(tasks):
-        await task
+        result = await task
+        if result is not None:
+            results[result[1]] = result[0]
         pbar.update(1)
     pbar.close()
+
+    with open(os.path.join(save_dir, f"responses_{start_index}_{end_index}.json"), 'w') as f:
+        json.dump(results, f)
     
 
     total_duration = time.time() - start_time
