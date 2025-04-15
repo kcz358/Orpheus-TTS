@@ -15,6 +15,7 @@ import wave
 from transformers import AutoTokenizer
 from tqdm import tqdm
 import os
+import soundfile as sf
 
 SAMPLE_RATE = 24000
 
@@ -27,58 +28,51 @@ def setup():
 
 
 def convert_to_audio(multiframe, count, model, snac_device):
-  frames = []
-  if len(multiframe) < 7:
-    return
+    frames = []
+    if len(multiframe) < 7:
+        return
   
-  codes_0 = torch.tensor([], device=snac_device, dtype=torch.int32)
-  codes_1 = torch.tensor([], device=snac_device, dtype=torch.int32)
-  codes_2 = torch.tensor([], device=snac_device, dtype=torch.int32)
+    codes_0 = torch.tensor([], device=snac_device, dtype=torch.int32)
+    codes_1 = torch.tensor([], device=snac_device, dtype=torch.int32)
+    codes_2 = torch.tensor([], device=snac_device, dtype=torch.int32)
 
-  num_frames = len(multiframe) // 7
-  frame = multiframe[:num_frames*7]
+    num_frames = len(multiframe) // 7
+    frame = multiframe[:num_frames*7]
 
-  for j in range(num_frames):
-    i = 7*j
-    if codes_0.shape[0] == 0:
-      codes_0 = torch.tensor([frame[i]], device=snac_device, dtype=torch.int32)
-    else:
-      codes_0 = torch.cat([codes_0, torch.tensor([frame[i]], device=snac_device, dtype=torch.int32)])
+    for j in range(num_frames):
+        i = 7*j
+        if codes_0.shape[0] == 0:
+            codes_0 = torch.tensor([frame[i]], device=snac_device, dtype=torch.int32)
+        else:
+            codes_0 = torch.cat([codes_0, torch.tensor([frame[i]], device=snac_device, dtype=torch.int32)])
 
-    if codes_1.shape[0] == 0:
+        if codes_1.shape[0] == 0:
       
-      codes_1 = torch.tensor([frame[i+1]], device=snac_device, dtype=torch.int32)
-      codes_1 = torch.cat([codes_1, torch.tensor([frame[i+4]], device=snac_device, dtype=torch.int32)])
-    else:
-      codes_1 = torch.cat([codes_1, torch.tensor([frame[i+1]], device=snac_device, dtype=torch.int32)])
-      codes_1 = torch.cat([codes_1, torch.tensor([frame[i+4]], device=snac_device, dtype=torch.int32)])
+            codes_1 = torch.tensor([frame[i+1]], device=snac_device, dtype=torch.int32)
+            codes_1 = torch.cat([codes_1, torch.tensor([frame[i+4]], device=snac_device, dtype=torch.int32)])
+        else:
+            codes_1 = torch.cat([codes_1, torch.tensor([frame[i+1]], device=snac_device, dtype=torch.int32)])
+            codes_1 = torch.cat([codes_1, torch.tensor([frame[i+4]], device=snac_device, dtype=torch.int32)])
     
-    if codes_2.shape[0] == 0:
-      codes_2 = torch.tensor([frame[i+2]], device=snac_device, dtype=torch.int32)
-      codes_2 = torch.cat([codes_2, torch.tensor([frame[i+3]], device=snac_device, dtype=torch.int32)])
-      codes_2 = torch.cat([codes_2, torch.tensor([frame[i+5]], device=snac_device, dtype=torch.int32)])
-      codes_2 = torch.cat([codes_2, torch.tensor([frame[i+6]], device=snac_device, dtype=torch.int32)])
-    else:
-      codes_2 = torch.cat([codes_2, torch.tensor([frame[i+2]], device=snac_device, dtype=torch.int32)])
-      codes_2 = torch.cat([codes_2, torch.tensor([frame[i+3]], device=snac_device, dtype=torch.int32)])
-      codes_2 = torch.cat([codes_2, torch.tensor([frame[i+5]], device=snac_device, dtype=torch.int32)])
-      codes_2 = torch.cat([codes_2, torch.tensor([frame[i+6]], device=snac_device, dtype=torch.int32)])
+        if codes_2.shape[0] == 0:
+            codes_2 = torch.tensor([frame[i+2]], device=snac_device, dtype=torch.int32)
+            codes_2 = torch.cat([codes_2, torch.tensor([frame[i+3]], device=snac_device, dtype=torch.int32)])
+            codes_2 = torch.cat([codes_2, torch.tensor([frame[i+5]], device=snac_device, dtype=torch.int32)])
+            codes_2 = torch.cat([codes_2, torch.tensor([frame[i+6]], device=snac_device, dtype=torch.int32)])
+        else:
+            codes_2 = torch.cat([codes_2, torch.tensor([frame[i+2]], device=snac_device, dtype=torch.int32)])
+            codes_2 = torch.cat([codes_2, torch.tensor([frame[i+3]], device=snac_device, dtype=torch.int32)])
+            codes_2 = torch.cat([codes_2, torch.tensor([frame[i+5]], device=snac_device, dtype=torch.int32)])
+            codes_2 = torch.cat([codes_2, torch.tensor([frame[i+6]], device=snac_device, dtype=torch.int32)])
 
-  codes = [codes_0.unsqueeze(0), codes_1.unsqueeze(0), codes_2.unsqueeze(0)]
-  # check that all tokens are between 0 and 4096 otherwise return *
-  if torch.any(codes[0] < 0) or torch.any(codes[0] > 4096) or torch.any(codes[1] < 0) or torch.any(codes[1] > 4096) or torch.any(codes[2] < 0) or torch.any(codes[2] > 4096):
-    return
+        codes = [codes_0.unsqueeze(0), codes_1.unsqueeze(0), codes_2.unsqueeze(0)]
+    # check that all tokens are between 0 and 4096 otherwise return *
+    if torch.any(codes[0] < 0) or torch.any(codes[0] > 4096) or torch.any(codes[1] < 0) or torch.any(codes[1] > 4096) or torch.any(codes[2] < 0) or torch.any(codes[2] > 4096):
+        return
 
-  with torch.inference_mode():
-    audio_hat = model.decode(codes)
-  
-  audio_slice = audio_hat[:, :, 2048:4096]
-  detached_audio = audio_slice.detach().cpu()
-  audio_np = detached_audio.numpy()
-  audio_int16 = (audio_np * 32767).astype(np.int16)
-  audio_bytes = audio_int16.tobytes()
-  return audio_bytes
-
+    with torch.inference_mode():
+        audio_hat = model.decode(codes)
+    return audio_hat
 
 def turn_token_into_id(token_string, index):
     # Strip whitespace
@@ -104,80 +98,25 @@ def turn_token_into_id(token_string, index):
     else:
         return None
 
-async def tokens_decoder(token_gen, model, snac_device):
-    buffer = []
-    count = 0
-    async for token_sim in token_gen:       
-        token = turn_token_into_id(token_sim, count)
-        if token is None:
-            pass
-        else:
-            if token > 0:
-                buffer.append(token)
-                count += 1
-
-                if count % 7 == 0 and count > 27:
-                    buffer_to_proc = buffer[-28:]
-                    audio_samples = convert_to_audio(buffer_to_proc, count, model, snac_device)
-                    if audio_samples is not None:
-                        yield audio_samples
-
-
-# ------------------ Synchronous Tokens Decoder Wrapper ------------------ #
-def tokens_decoder_sync(syn_token_gen, model, snac_device):
-
-    audio_queue = queue.Queue()
-
-    # Convert the synchronous token generator into an async generator.
-    async def async_token_gen():
-        for token in syn_token_gen:
-            yield token
-
-    async def async_producer():
-        # tokens_decoder.tokens_decoder is assumed to be an async generator that processes tokens.
-        async for audio_chunk in tokens_decoder(async_token_gen(), model, snac_device):
-            audio_queue.put(audio_chunk)
-        audio_queue.put(None)  # Sentinel
-
-    def run_async():
-        asyncio.run(async_producer())
-
-    thread = threading.Thread(target=run_async)
-    thread.start()
-
-    while True:
-        audio = audio_queue.get()
-        if audio is None:
-            break
-        yield audio
-
-    thread.join()
-
 def generate_data_by_local_rank(data, local_rank, world_size):
     for idx, (save_path, data_item) in enumerate(data.items()):
         if idx % world_size == local_rank:
             yield save_path, data_item
 
 def write_audio_to_file(audio, save_path):
-    with wave.open(save_path, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(24000)
-
-        total_frames = 0
-        chunk_counter = 0
-        for audio_chunk in audio: # output streaming
-            chunk_counter += 1
-            frame_count = len(audio_chunk) // (wf.getsampwidth() * wf.getnchannels())
-            total_frames += frame_count
-            wf.writeframes(audio_chunk)
+    sf.write(save_path, audio[0, 0].cpu().numpy(), SAMPLE_RATE)
 
 
 def split_tokens_to_list(tokens, tokenizer):
     tokens = tokenizer.encode(tokens)
     splited_tokens = []
+    count = 0
     for tok in tokens:
-        splited_tokens.append(tokenizer.decode(tok))
+        input_id = tokenizer.decode(tok)
+        codec = turn_token_into_id(input_id, count)
+        if codec is not None:
+            splited_tokens.append(codec)
+            count += 1
     return splited_tokens
 
 
@@ -198,11 +137,13 @@ def main(args):
     with open(data_path, 'r') as f:
         data = json.load(f)
 
-    pbar = tqdm(disable=local_rank != 0, desc="Processing data")
-    for idx, (save_path, tokens) in enumerate(generate_data_by_local_rank(data, local_rank, world_size)):
+    metadata = list(generate_data_by_local_rank(data, local_rank, world_size))
+    pbar = tqdm(disable=local_rank != 0, desc="Processing data", total=len(metadata))
+    for idx, (save_path, tokens) in enumerate(metadata):
         tokens = split_tokens_to_list(tokens, tokenizer)
-        audio_tokens = tokens_decoder_sync(tokens, model, snac_device)
-        write_audio_to_file(audio_tokens, save_path)
+        audio_tokens = convert_to_audio(tokens, idx, model, snac_device)
+        if audio_tokens is not None:
+            write_audio_to_file(audio_tokens, save_path)
         pbar.update(1)
     pbar.close()
     print(f"Rank {local_rank} finished processing data.")
