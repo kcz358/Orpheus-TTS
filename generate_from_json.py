@@ -103,6 +103,11 @@ def generate_data_by_local_rank(data, local_rank, world_size):
         if idx % world_size == local_rank:
             yield save_path, data_item
 
+def generate_tqdm_iterator_by_local_rank(length, local_rank, world_size):
+    for idx in range(length):
+        if idx % world_size == local_rank:
+            yield idx
+
 def write_audio_to_file(audio, save_path):
     sf.write(save_path, audio[0, 0].cpu().numpy(), SAMPLE_RATE)
 
@@ -134,11 +139,14 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained("canopylabs/orpheus-tts-0.1-finetune-prod")
 
 
+    print("Loading json audio tokens")
     with open(data_path, 'r') as f:
         data = json.load(f)
+    print("Loaded json audio tokens")
 
-    metadata = list(generate_data_by_local_rank(data, local_rank, world_size))
-    pbar = tqdm(disable=local_rank != 0, desc="Processing data", total=len(metadata))
+    metadata = generate_data_by_local_rank(data, local_rank, world_size)
+    pbar_iterator = list(generate_tqdm_iterator_by_local_rank(len(data), local_rank, world_size))
+    pbar = tqdm(disable=local_rank != 0, desc="Processing data", total=len(pbar_iterator))
     for idx, (save_path, tokens) in enumerate(metadata):
         tokens = split_tokens_to_list(tokens, tokenizer)
         audio_tokens = convert_to_audio(tokens, idx, model, snac_device)
