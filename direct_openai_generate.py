@@ -15,6 +15,7 @@ import jsonlines
 import json
 import asyncio
 from glob import glob
+import random
 
 
 DEBUG = False
@@ -78,7 +79,7 @@ async def generate_audio_stream(prompt: str, voice: str, file_path: str) -> None
     try:
         formatted_prompt = format_prompt(prompt, voice)
         response = await client.completions.create(
-            model="canopylabs/orpheus-tts-0.1-finetune-prod",
+            model="canopylabs/orpheus-3b-0.1-ft",
             prompt=formatted_prompt,
             stream=True,
             max_tokens=MAX_TOKENS,
@@ -133,6 +134,8 @@ async def generate_audio_stream(prompt: str, voice: str, file_path: str) -> None
         raise
 
 def generate_requests(data_path: str, save_dir: str, start_index: int = 0, cache_files: set = None, end_index: int = None):
+    user_voice = ["zoe", "zac","jess", "leo", "mia", "julia", "leah"]
+    select_voice = random.choice(user_voice)
     with jsonlines.open(data_path, 'r') as reader:
         for idx, da in enumerate(reader):
             if end_index is not None and idx >= end_index:
@@ -141,15 +144,17 @@ def generate_requests(data_path: str, save_dir: str, start_index: int = 0, cache
                 continue
             messages = da['messages']
             id = da["id"]
-            for message in messages:
+            for round, message in enumerate(messages, 1):
                 content = message["content"]
+                role = message["role"]
+                voice = select_voice if role == "user" else "tara"
                 for cont in content:
                     if cont["type"] == "text":
-                        save_path = os.path.join(save_dir, f"data_idx_{idx}_{id}_assistant.wav")
+                        save_path = os.path.join(save_dir, f"data_idx_{idx}_order_{round}_{role}.wav")
                         # Don't yield if the file already exists and is in the cache
                         if cache_files is not None and os.path.basename(save_path) in cache_files:
                             continue
-                        yield cont["text"], save_path
+                        yield cont["text"], save_path, voice
 
 
 async def main(args):
@@ -163,13 +168,13 @@ async def main(args):
 
     semaphore = asyncio.Semaphore(args.concurrency)
 
-    async def _process(text, save_path):
+    async def _process(text, save_path, voice):
         async with semaphore:
-            return await generate_audio_stream(text, "tara", save_path)
+            return await generate_audio_stream(text, voice, save_path)
 
     tasks = []
-    for (text, save_path) in generate_requests(data_path, save_dir, start_index, cache_files, end_index):
-        tasks.append(asyncio.create_task(_process(text, save_path)))
+    for (text, save_path, voice) in generate_requests(data_path, save_dir, start_index, cache_files, end_index):
+        tasks.append(asyncio.create_task(_process(text, save_path, voice)))
     
     pbar = tqdm(total=len(tasks), desc="Processing requests")
     results = {}
